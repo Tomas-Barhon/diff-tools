@@ -1,0 +1,30 @@
+experiment:
+  name: "mnist_classifier"
+  script: "train_model.py"
+  base_dir: "."
+
+# Cluster configuration
+cluster:
+  type: "slurm" # or "local"
+  cpus_per_task: 4
+  gpus_per_task: 1
+  memory: "16G"
+  time_limit: "02:00:00"
+
+# Hyperparameter grid for argparse
+params:
+  learning_rate: [0.001, 0.01, 0.1]
+  batch_size: [32, 64, 128]
+  optimizer: ["adam", "sgd"]
+  model_type: ["resnet18", "resnet50"]
+
+# Fixed parameters
+fixed_params:
+  seed: 42
+  data_dir: "/path/to/data"
+
+# What metrics to collect from your training script
+metrics:
+  - accuracy
+  - loss
+  - f1_score
