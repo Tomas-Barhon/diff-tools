@@ -1,0 +1,41 @@
+#!/bin/bash
+
+SESSION_NAME="${1:-python-dev}"
+PROJECT_DIR="${2:-$PWD}"
+
+# Check if session already exists
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  echo "Session '$SESSION_NAME' already exists. Attaching..."
+  tmux attach-session -t "$SESSION_NAME"
+  exit 0
+fi
+
+# Create new session
+tmux new-session -d -s "$SESSION_NAME" -n neovim -c "$PROJECT_DIR"
+
+# Window 1: Neovim
+tmux send-keys -t "$SESSION_NAME:neovim" "nvim ." C-m
+
+# Window 2: Terminal
+tmux new-window -t "$SESSION_NAME" -n terminal -c "$PROJECT_DIR"
+
+# Window 3: Tests (with virtual env activation if exists)
+tmux new-window -t "$SESSION_NAME" -n tests -c "$PROJECT_DIR"
+
+# Window 4: SSH to Raspberry Pi
+tmux new-window -t "$SESSION_NAME" -n raspberry
+# TODO: Make raspberry networking work
+tmux send-keys -t "$SESSION_NAME:raspberry" "# ssh pi@raspberrypi.local" C-m
+
+# Window 5: Coding Agent
+tmux new-window -t "$SESSION_NAME" -n agent -c "$PROJECT_DIR"
+
+# Window 6: System Monitor
+tmux new-window -t "$SESSION_NAME" -n monitor
+tmux send-keys -t "$SESSION_NAME:monitor" "btop 2>/dev/null || htop" C-m
+
+# Select neovim window
+tmux select-window -t "$SESSION_NAME:neovim"
+
+# Attach to session
+tmux attach-session -t "$SESSION_NAME"
