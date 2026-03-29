@@ -32,7 +32,7 @@ tmux new-window -t "$SESSION_NAME" -n agent -c "$PROJECT_DIR"
 
 # Window 6: System Monitor
 tmux new-window -t "$SESSION_NAME" -n monitor
-tmux send-keys -t "$SESSION_NAME:monitor" "btop 2>/dev/null || htop" C-m
+tmux send-keys -t "$SESSION_NAME:monitor" "top" C-m
 
 # Select neovim window
 tmux select-window -t "$SESSION_NAME:neovim"
