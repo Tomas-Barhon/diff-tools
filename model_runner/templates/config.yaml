@@ -1,30 +1,26 @@
-experiment:
-  name: "mnist_classifier"
-  script: "train_model.py"
-  base_dir: "."
+runner:
+  script_path: "./reinforce_baseline.py"
 
-# Cluster configuration
-cluster:
-  type: "slurm" # or "local"
-  cpus_per_task: 4
-  gpus_per_task: 1
-  memory: "16G"
-  time_limit: "02:00:00"
+collector:
+  regex: "The mean \\d+-episode return after evaluation (-?\\d+(?:\\.\\d+)?)"
 
-# Hyperparameter grid for argparse
-params:
-  learning_rate: [0.001, 0.01, 0.1]
-  batch_size: [32, 64, 128]
-  optimizer: ["adam", "sgd"]
-  model_type: ["resnet18", "resnet50"]
+search:
+  param_grid:
+    batch_size: [1, 4]
+    episodes: [200, 500, 100]
+    gamma: [0.99]
+    hidden_layer_size: [64]
+    learning_rate_policy: [0.01]
+    learning_rate_value: 0.1
 
-# Fixed parameters
-fixed_params:
-  seed: 42
-  data_dir: "/path/to/data"
+execution:
+  jobs: 1
+  continue_on_failure: true
 
-# What metrics to collect from your training script
-metrics:
-  - accuracy
-  - loss
-  - f1_score
+reporting:
+  results_csv: "results.csv"
+  top_k: 5
+  metric_name: "mean_return"
+  metric_mode: "max"
+  show_progress: true
+  show_run_logs: true

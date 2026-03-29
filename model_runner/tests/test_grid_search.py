@@ -1,3 +1,4 @@
+import csv
 import sys
 import tempfile
 import unittest
@@ -7,73 +8,86 @@ SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
+from grid_search.grid_search import GridSearch
+from param_search.base_param_search import ExecutionConfig, ReportingConfig
+from results_collectors.base_collector import BaseCollector
 from runners.base_runner import BaseRunner
 from runners.params import RunParams
-from results_collectors.base_collector import BaseCollector
-
-try:
-    import yaml
-    from grid_search.grid_search import GridSearch
-except ModuleNotFoundError:
-    yaml = None
-    GridSearch = None
+from runners.run_result import RunResult
 
 
 class DummyRunner(BaseRunner):
     def __init__(self):
         self.calls: list[RunParams] = []
 
-    def run(self, run_params: RunParams):
+    def run(self, run_params: RunParams) -> RunResult:
         self.calls.append(run_params)
+        value = run_params.params.get("value", 0)
+        return RunResult(
+            success=True,
+            stdout=f"score: {value}\n",
+            stderr="",
+            returncode=0,
+            duration_seconds=0.01,
+        )
 
 
 class DummyCollector(BaseCollector):
-    def collect(self, *args, **kwargs):
-        return None
+    def collect(self, output: str) -> list[str]:
+        for line in output.splitlines():
+            if line.startswith("score: "):
+                return [line.split(": ", maxsplit=1)[1]]
+        return []
 
 
-@unittest.skipUnless(GridSearch is not None, "PyYAML not installed")
 class GridSearchTests(unittest.TestCase):
-    def test_generate_param_combinations_yields_run_params(self):
+    def test_scalar_values_are_wrapped(self):
+        search = GridSearch(
+            runner=DummyRunner(),
+            collector=DummyCollector(),
+            param_grid={"lr": 0.1, "seed": [1, 2]},
+        )
+        _, combinations = search._all_run_params()
+
+        self.assertEqual(len(combinations), 2)
+        self.assertEqual(combinations[0].params["lr"], 0.1)
+
+    def test_call_runs_and_writes_csv(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            config_path = Path(tmp_dir) / "grid.yaml"
-            with open(config_path, "w", encoding="utf-8") as file:
-                yaml.safe_dump(
-                    {
-                        "lr": [0.1, 0.2],
-                        "recodex": [True, False],
-                    },
-                    file,
-                )
+            csv_path = Path(tmp_dir) / "results.csv"
+            search = GridSearch(
+                runner=DummyRunner(),
+                collector=DummyCollector(),
+                param_grid={"value": [3, 1, 2]},
+                execution=ExecutionConfig(jobs=1, continue_on_failure=True),
+                reporting=ReportingConfig(
+                    results_csv=str(csv_path),
+                    top_k=2,
+                    metric_name="score",
+                    metric_mode="max",
+                    show_progress=False,
+                    show_run_logs=False,
+                ),
+            )
 
-            grid_search = GridSearch(DummyRunner(), DummyCollector(), config_path)
-            combinations = list(grid_search._generate_param_combinations())
+            search()
 
-        self.assertEqual(len(combinations), 4)
-        self.assertTrue(all(isinstance(item, RunParams) for item in combinations))
-        self.assertIn("--lr=0.1", combinations[0].to_cli_args())
+            with open(csv_path, "r", encoding="utf-8", newline="") as file:
+                rows = list(csv.reader(file))
 
-    def test_call_passes_run_params_to_runner(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            config_path = Path(tmp_dir) / "grid.yaml"
-            with open(config_path, "w", encoding="utf-8") as file:
-                yaml.safe_dump(
-                    {
-                        "epochs": [1, 2],
-                        "recodex": [True],
-                    },
-                    file,
-                )
+        self.assertEqual(rows[0], ["value", "score"])
+        self.assertEqual(len(rows), 4)
 
-            runner = DummyRunner()
-            grid_search = GridSearch(runner, DummyCollector(), config_path)
-            grid_search()
+    def test_from_experiment_config_defaults_jobs_to_one(self):
+        config = {
+            "runner": {"script_path": "./script.py"},
+            "collector": {"regex": "score: ([-0-9.]+)"},
+            "search": {"backend": "grid", "param_grid": {"value": [1, 2]}},
+        }
+        search = GridSearch.from_experiment_config(config)
 
-        self.assertEqual(len(runner.calls), 2)
-        self.assertTrue(all(isinstance(item, RunParams) for item in runner.calls))
-        cli_args = [run_params.to_cli_args() for run_params in runner.calls]
-        self.assertIn(["--epochs=1", "--recodex"], cli_args)
-        self.assertIn(["--epochs=2", "--recodex"], cli_args)
+        self.assertEqual(search.execution.jobs, 1)
+        self.assertEqual(search.reporting.metric_mode, "max")
 
 
 if __name__ == "__main__":
