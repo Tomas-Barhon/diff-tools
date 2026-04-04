@@ -23,6 +23,7 @@ class OptunaSearch(BaseParamSearch):
         search_space: dict,
         n_trials: int,
         storage: OptunaStorageConfig,
+        model_name: str | None = None,
         execution=None,
         reporting=None,
     ):
@@ -30,6 +31,7 @@ class OptunaSearch(BaseParamSearch):
         self.search_space = search_space
         self.n_trials = n_trials
         self.storage = storage
+        self.model_name = model_name
 
     @classmethod
     def from_experiment_config(cls, config: dict) -> "OptunaSearch":
@@ -49,6 +51,7 @@ class OptunaSearch(BaseParamSearch):
             load_if_exists=bool(storage_cfg.get("load_if_exists", True)),
         )
 
+        model_name = config.get("model_name")
         runner, collector, execution, reporting = BaseParamSearch.parse_common_config(
             config
         )
@@ -58,6 +61,7 @@ class OptunaSearch(BaseParamSearch):
             search_space=search_space,
             n_trials=n_trials,
             storage=storage,
+            model_name=model_name,
             execution=execution,
             reporting=reporting,
         )
@@ -114,6 +118,8 @@ class OptunaSearch(BaseParamSearch):
             trial = study.ask()
             asked_trial_numbers.append(trial.number)
             params = self._suggest_params(trial)
+            if self.model_name:
+                params["model_name"] = f"{self.model_name}_{trial.number}"
             run_params_list.append(RunParams.from_mapping(params))
 
         rows, elapsed = self._run_param_list(
@@ -129,5 +135,7 @@ class OptunaSearch(BaseParamSearch):
                 study.tell(trial_number, value)
 
         param_keys = list(self.search_space.keys())
+        if self.model_name:
+            param_keys.append("model_name")
         csv_path = self._write_results_csv(rows, param_keys)
         self._print_summary(rows, elapsed, csv_path, param_keys)

@@ -131,6 +131,7 @@ class BaseParamSearch(ABC):
             "success": run_result.success and result != "FAILED",
             "duration_seconds": run_result.duration_seconds,
             "returncode": run_result.returncode,
+            "merged_output": merged_output,
         }
 
     def _log_row(self, row: dict) -> None:
@@ -146,6 +147,8 @@ class BaseParamSearch(ABC):
             f" params=({params_text})"
             f"[/]"
         )
+        if status == "FAILED":
+            self._console.print(row.get("merged_output"))
 
     def _run_param_list(
         self, run_params_list: list[RunParams], search_name: str
@@ -193,10 +196,22 @@ class BaseParamSearch(ABC):
 
     def _write_results_csv(self, rows: list[dict], param_keys: list[str]) -> Path:
         csv_path = Path(self.reporting.results_csv)
+
+        # Sort rows based on the metric
+        sorted_rows = sorted(
+            rows,
+            key=lambda row: (
+                self._to_float(row["result"]) is None,  # Failed runs go last
+                -self._to_float(row["result"])
+                if self.reporting.metric_mode == "max"
+                else self._to_float(row["result"]),
+            ),
+        )
+
         with open(csv_path, "w", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow([*param_keys, self.reporting.metric_name])
-            for row in rows:
+            for row in sorted_rows:
                 writer.writerow(
                     [row["params"].get(key) for key in param_keys] + [row["result"]]
                 )
